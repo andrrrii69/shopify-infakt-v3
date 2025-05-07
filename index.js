@@ -22,8 +22,8 @@ app.post('/webhook', async (req, res) => {
       {
         client: {
           first_name: order.customer.first_name,
-          last_name: order.customer.last_name,
-          email: order.customer.email,
+          last_name:  order.customer.last_name,
+          email:      order.customer.email,
           business_activity_kind: 'private_person'
         }
       },
@@ -31,20 +31,29 @@ app.post('/webhook', async (req, res) => {
     );
 
     const data = clientResp.data;
-    // Handle possible response shapes: {client: {...}} or {clients: [{...}]}
-    const clientObj = data.client ?? (Array.isArray(data.clients) ? data.clients[0] : null);
-    if (!clientObj || !clientObj.id) {
+    let clientId;
+
+    // Handle various response shapes from Infakt API
+    if (typeof data.id === 'number') {
+      // direct object with id at root
+      clientId = data.id;
+    } else if (data.client && typeof data.client.id === 'number') {
+      // { client: { id: ... } }
+      clientId = data.client.id;
+    } else if (Array.isArray(data.clients) && data.clients[0]?.id) {
+      // { clients: [ { id: ... } ] }
+      clientId = data.clients[0].id;
+    } else {
       console.error('Unexpected create client response:', JSON.stringify(data));
       return res.status(500).send('Invalid client creation response');
     }
-    const clientId = clientObj.id;
 
     // 2) Prepare invoice items
     const items = order.line_items.map(item => ({
-      name: item.name,
-      quantity: item.quantity,
-      unit_price: item.price,
-      vat_rate: (item.tax_lines[0]?.rate || 0) * 100
+      name:        item.name,
+      quantity:    item.quantity,
+      unit_price:  item.price,
+      vat_rate:    (item.tax_lines[0]?.rate || 0) * 100
     }));
 
     // 3) Create invoice
@@ -52,8 +61,8 @@ app.post('/webhook', async (req, res) => {
       `${BASE_URL}/invoices.json`,
       {
         invoice: {
-          client_id: clientId,
-          issue_date: new Date().toISOString().slice(0,10),
+          client_id:   clientId,
+          issue_date:  new Date().toISOString().slice(0,10),
           items
         }
       },
@@ -62,6 +71,7 @@ app.post('/webhook', async (req, res) => {
 
     console.log(`✅ Invoice created for order #${order.id}`, invoiceResp.data);
     res.sendStatus(200);
+
   } catch (e) {
     console.error('❌ Infakt API error:', e.response?.data || e.message);
     res.sendStatus(500);
