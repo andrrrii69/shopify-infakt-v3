@@ -13,7 +13,7 @@ app.use((req, res, next) => {
 });
 
 const BASE_URL = 'https://api.infakt.pl/api/v3';
-const CLIENTS_ENDPOINT = `${BASE_URL}/clients.json`;
+const CLIENTS_ENDPOINT = `${BASE_URL}/clients.json`;  // endpoint for clients
 const INVOICES_ENDPOINT = `${BASE_URL}/invoices.json`;
 const HEADERS = {
   'Content-Type': 'application/json',
@@ -26,11 +26,16 @@ app.post('/webhook', async (req, res) => {
     const { contact_email, billing_address, line_items } = req.body;
 
     // 1. Always create a new client in Infakt
-    const newClient = {
+    const fullName = billing_address
+      ? `${billing_address.first_name || ''} ${billing_address.last_name || ''}`.trim()
+      : contact_email;
+    const newClientPayload = {
       client: {
-        name: billing_address ? `${billing_address.first_name || ''} ${billing_address.last_name || ''}`.trim() : contact_email,
+        company_name: fullName,
+        first_name: billing_address?.first_name,
+        last_name: billing_address?.last_name,
         email: contact_email,
-        phone: billing_address?.phone || undefined,
+        phone: billing_address?.phone,
         address: billing_address?.address1,
         city: billing_address?.city,
         zip: billing_address?.zip,
@@ -39,7 +44,7 @@ app.post('/webhook', async (req, res) => {
     };
     const clientResp = await axios.post(
       CLIENTS_ENDPOINT,
-      newClient,
+      newClientPayload,
       { headers: HEADERS }
     );
     const clientId = clientResp.data.client.id;
