@@ -1,54 +1,57 @@
-# Shopify → Infakt Integration
+# Shopify → Infakt Integration (v3 API)
 
-## Pliki
+This integration listens for Shopify `orders/create` webhooks and creates an invoice in Infakt for a private person client using the Infakt API v3.
 
-- `index.js` – główny serwer HTTP nasłuchujący webhooka.
-- `.env.example` – wzór pliku środowiskowego.
+## Files
 
-## Instrukcja
+- `index.js` – main Express server
+- `.env.example` – example environment variables file
+- `README.md` – this instructions file
 
-1. Skopiuj `.env.example` do `.env`:
+## Setup
+
+1. Copy `.env.example` to `.env`:
    ```
    cp .env.example .env
    ```
-2. Uzupełnij w `.env`:
+2. Edit `.env` and set your Infakt API key:
    ```
-   INFAKT_TOKEN=twój_infakt_token
+   INFAKT_API_KEY=your_actual_infakt_api_key
    ```
-3. Zainstaluj zależności:
+
+3. Install dependencies:
    ```
    npm install express axios dotenv
    ```
-4. (Opcjonalnie) zainicjuj repozytorium Git:
+
+4. (Optional) Initialize Git and push to GitHub:
    ```
    git init
    git add .
    git commit -m "Initial commit"
-   ```
-5. Skonfiguruj zdalne repozytorium i wypchnij:
-   ```
-   git remote add origin https://github.com/TwojeKonto/shopify-infakt.git
+   git branch -M main
+   git remote add origin https://github.com/YourUser/shopify-infakt.git
    git push -u origin main
    ```
-6. Na Render.com:
-   - Zaloguj się i kliknij **New → Web Service**.
-   - Wybierz repo `shopify-infakt`, branch `main`.
+
+5. Deploy to Render.com:
+   - In Render.com dashboard click **New → Web Service**.
+   - Connect your GitHub repo, select `main` branch.
    - Build Command: `npm install`
    - Start Command: `node index.js`
-   - Dodaj zmienną środowiskową `INFAKT_TOKEN`.
-   - Deploy.
+   - Add environment variable:
+     - `INFAKT_API_KEY`
 
-7. W Shopify Admin:
-   - Ustaw w **Settings → Notifications → Webhooks** URL:
-     ```
-     https://<YOUR_RENDER_URL>/webhook
-     ```
-   - (Bez weryfikacji HMAC w tym wariancie).
+6. In Shopify Admin, create a webhook:
+   - Go to **Settings → Notifications → Webhooks → Create webhook**.
+   - Event: **Order creation** (`orders/create`)
+   - URL: `https://<YOUR_RENDER_URL>/webhook`
+   - Format: **JSON**
 
-8. Złóż testowe zamówienie i sprawdź:
-   - Render → **Logs**
-   - Infakt → **Kontakty** i **Faktury**
+7. Test:
+   - Place a test order in Shopify.
+   - Check Render logs and Infakt for new client and invoice.
 
----
+## Notes
 
-**Uwaga**: nie weryfikujemy HMAC – upewnij się, że URL jest ukryty i bezpieczny.
+- This version **does not** verify Shopify webhook HMAC, so keep the endpoint URL secret.
