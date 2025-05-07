@@ -12,19 +12,30 @@ const HEADERS = {
   'X-InFakt-ApiKey': process.env.INFAKT_API_KEY
 };
 
+function calculateNetAndTaxAmount(priceGross, vatRate) {
+  const gross = parseFloat(priceGross);
+  const rate = parseFloat(vatRate) / 100;
+  const net = +(gross / (1 + rate)).toFixed(2);
+  const tax = +(gross - net).toFixed(2);
+  return { net, tax, gross };
+}
+
 app.post('/webhook', async (req, res) => {
   const order = req.body;
-
   try {
-    // Create client as private person
-    const clientResp = await axios.post(\`\${BASE_URL}/clients.json\`, {
-      client: {
-        first_name: order.customer.first_name,
-        last_name:  order.customer.last_name,
-        email:      order.customer.email,
-        business_activity_kind: 'private_person'
-      }
-    }, { headers: HEADERS });
+    // Create client
+    const clientResp = await axios.post(
+      `${BASE_URL}/clients.json`,
+      {
+        client: {
+          first_name: order.customer.first_name,
+          last_name: order.customer.last_name,
+          email: order.customer.email,
+          business_activity_kind: 'private_person'
+        }
+      },
+      { headers: HEADERS }
+    );
 
     const data = clientResp.data;
     let clientId;
@@ -39,56 +50,42 @@ app.post('/webhook', async (req, res) => {
       return res.status(500).send('Invalid client creation response');
     }
 
-    // Prepare services array and tax aggregation
+    // Prepare services and tax values
     const services = [];
-    const taxValuesMap = {}; // ratePercent -> totalTaxValue
+    const tax_values = {};
 
-    for (const item of order.line_items) {
-      const grossPrice = parseFloat(item.price);
-      const quantity = item.quantity;
-      const rateFraction = item.tax_lines[0]?.rate || 0;
-      const ratePercent = Math.round(rateFraction * 100);
-
-      // Calculate net unit price
-      const netPrice = +(grossPrice / (1 + rateFraction)).toFixed(2);
-      // Calculate tax amount per unit
-      const taxPerUnit = +(grossPrice - netPrice).toFixed(2);
-
-      // Accumulate tax values
-      taxValuesMap[ratePercent] = (taxValuesMap[ratePercent] || 0) + taxPerUnit * quantity;
-
+    order.line_items.forEach(item => {
+      const vatRatePercent = (item.tax_lines[0]?.rate || 0) * 100;
+      const { net, tax, gross } = calculateNetAndTaxAmount(item.price, vatRatePercent);
       services.push({
-        name:       item.name,
-        quantity:   quantity,
-        unit_cost:  netPrice,
-        tax:        ratePercent,
-        gross:      grossPrice
+        name: item.name,
+        quantity: item.quantity,
+        unit_cost: net,
+        tax: vatRatePercent,
+        gross: gross
       });
-    }
+      const key = `${vatRatePercent}`;
+      tax_values[key] = (tax_values[key] || 0) + tax * item.quantity;
+    });
 
-    // Build tax_values array
-    const tax_values = Object.entries(taxValuesMap).map(([rate, value]) => ({
-      rate:  parseInt(rate),
-      value: +value.toFixed(2)
-    }));
-
-    // Create invoice with services and tax_values
     const invoicePayload = {
       invoice: {
-        client_id:  clientId,
-        issue_date: new Date().toISOString().slice(0,10),
-        services:   services,
+        client_id: clientId,
+        issue_date: new Date().toISOString().slice(0, 10),
+        services,
         value: {
           tax_values: tax_values
         }
       }
     };
 
-    const invoiceResp = await axios.post(\`\${BASE_URL}/invoices.json\`, invoicePayload, { headers: HEADERS });
-
-    console.log(\`✅ Invoice created for order #\${order.id}\`, invoiceResp.data);
+    const invoiceResp = await axios.post(
+      `${BASE_URL}/invoices.json`,
+      invoicePayload,
+      { headers: HEADERS }
+    );
+    console.log(`✅ Invoice created for order #${order.id}`, invoiceResp.data);
     res.sendStatus(200);
-
   } catch (e) {
     console.error('❌ Infakt API error:', e.response?.data || e.message);
     res.sendStatus(500);
@@ -96,4 +93,4 @@ app.post('/webhook', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(\`🚀 Server listening on port \${PORT}\`));
+app.listen(PORT, () => console.log(`🚀 Server listening on port ${PORT}`));
