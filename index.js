@@ -16,11 +16,10 @@ app.post('/webhook', async (req, res) => {
   const { customer, line_items, id: orderId } = req.body;
 
   try {
-    // 1) Create client as private person
-    const clientResp = await axios.post(
+    // 1) Create client
+    const { data: clientData } = await axios.post(
       `${BASE_URL}/clients.json`,
-      {
-        client: {
+      { client: {
           first_name: customer.first_name,
           last_name:  customer.last_name,
           email:      customer.email,
@@ -29,44 +28,41 @@ app.post('/webhook', async (req, res) => {
       },
       { headers: HEADERS }
     );
-
-    const clientData = clientResp.data;
-    const clientId = clientData.id 
-                   || clientData.client?.id 
+    const clientId = clientData.id
+                   || clientData.client?.id
                    || clientData.clients?.[0]?.id;
     if (!clientId) {
-      throw new Error('Nie udało się odczytać client.id');
+      throw new Error('Cannot read clientId from response');
     }
 
-    // 2) Prepare services: net price and VAT rate
+    // 2) Prepare services: only net price and VAT rate
     const services = line_items.map(item => {
-      const grossPrice = parseFloat(item.price);
-      const netPrice = grossPrice / 1.23; // remove 23% VAT
-      const vatRate = (item.tax_lines[0]?.rate || 0) * 100; // e.g. 23
-
+      const gross = parseFloat(item.price);
+      const net = parseFloat((gross / 1.23).toFixed(2));
+      const vatRate = (item.tax_lines?.[0]?.rate || 0) * 100;
       return {
-        name:      item.name,
-        quantity:  item.quantity,
-        unit_cost: parseFloat(netPrice.toFixed(2)), // net price
-        tax_rate:  vatRate                         // VAT rate
+        name:       item.name,
+        quantity:   item.quantity,
+        unit_cost:  net,
+        vat_rate:   vatRate
       };
     });
 
     // 3) Create invoice synchronously
-    const invoiceResp = await axios.post(
+    const { data: invoiceData } = await axios.post(
       `${BASE_URL}/invoices.json`,
-      {
-        invoice: {
+      { invoice: {
           client_id:  clientId,
-          issue_date: new Date().toISOString().split('T')[0],
+          issue_date: new Date().toISOString().slice(0,10),
           services
         }
       },
       { headers: HEADERS }
     );
 
-    console.log(`✅ Invoice created for order #${orderId}`, invoiceResp.data);
+    console.log(`✅ Invoice created for order #${orderId}`, invoiceData);
     res.sendStatus(200);
+
   } catch (err) {
     console.error('❌ Infakt API error:', err.response?.data || err.message);
     res.sendStatus(500);
