@@ -48,7 +48,7 @@ app.post('/webhook', async (req, res) => {
       { headers: HEADERS }
     );
     console.log('👤 Client creation response:', clientResp.data);
-    const clientId = clientResp.data.client?.id;
+    const clientId = clientResp.data.id || clientResp.data.client?.id;
     if (!clientId) {
       console.error('❌ Brak client.id w odpowiedzi Infakt:', clientResp.data);
       return res.status(500).json({ error: 'Nie udało się utworzyć klienta' });
