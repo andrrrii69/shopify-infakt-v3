@@ -1,7 +1,7 @@
 // index.js
+require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
-require('dotenv').config();
 
 const app = express();
 // Parse JSON bodies
@@ -17,7 +17,7 @@ const CLIENTS_ENDPOINT = `${BASE_URL}/clients.json`;
 const INVOICES_ENDPOINT = `${BASE_URL}/invoices.json`;
 const HEADERS = {
   'Content-Type': 'application/json',
-  'X-InFakt-ApiKey': process.env.INFAKT_API_KEY,
+  'X-InFakt-ApiKey': process.env.INFAKT_API_KEY
 };
 
 app.post('/webhook', async (req, res) => {
@@ -29,6 +29,7 @@ app.post('/webhook', async (req, res) => {
     const fullName = billing_address
       ? `${billing_address.first_name || ''} ${billing_address.last_name || ''}`.trim()
       : contact_email;
+
     const newClientPayload = {
       client: {
         company_name: fullName,
@@ -39,15 +40,16 @@ app.post('/webhook', async (req, res) => {
         address: billing_address?.address1,
         city: billing_address?.city,
         zip: billing_address?.zip,
-        country: billing_address?.country,
+        country: billing_address?.country
       }
     };
+
     const clientResp = await axios.post(
       CLIENTS_ENDPOINT,
       newClientPayload,
       { headers: HEADERS }
     );
-    console.log('👤 Client creation response:', clientResp.data);
+
     const clientId = clientResp.data.id || clientResp.data.client?.id;
     if (!clientId) {
       console.error('❌ Brak client.id w odpowiedzi Infakt:', clientResp.data);
@@ -55,23 +57,42 @@ app.post('/webhook', async (req, res) => {
     }
 
     // 2. Map Shopify line items to Infakt services
-    const services = line_items.map(item => ({
-      name: item.title,
-      quantity: item.quantity,
-      unit_cost: parseFloat(item.price),
-      tax: process.env.INFAKT_DEFAULT_TAX_RATE || '23'
-    }));
+    const vatRate = process.env.INFAKT_DEFAULT_TAX_RATE || '23';
+    const flatRate = process.env.INFAKT_DEFAULT_FLAT_RATE || '3';
+    const services = line_items.map(item => {
+      const netValue = parseFloat(item.price) * item.quantity;
+      const taxValue = +(netValue * parseFloat(vatRate) / 100).toFixed(2);
+      return {
+        name: item.title,
+        quantity: item.quantity,
+        unit_cost: parseFloat(item.price),
+        gross: netValue,
+        tax: vatRate,
+        tax_values: [
+          {
+            tax_id: vatRate,
+            base: netValue,
+            value: taxValue
+          }
+        ],
+        flat_rate: flatRate
+      };
+    });
 
-    // 3. Create invoice synchronously
+    // 3. Create invoice synchronously with Ryczałt and VAT
+    const invoicePayload = {
+      invoice: {
+        client_id: clientId,
+        issue_date: new Date().toISOString().slice(0, 10),
+        settlement_kind: 'ryczalt',
+        settlement_rate: flatRate,
+        services
+      }
+    };
+
     const invoiceResp = await axios.post(
       INVOICES_ENDPOINT,
-      {
-        invoice: {
-          client_id: clientId,
-          issue_date: new Date().toISOString().slice(0, 10),
-          services
-        }
-      },
+      invoicePayload,
       { headers: HEADERS }
     );
 
