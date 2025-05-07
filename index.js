@@ -29,7 +29,15 @@ app.post('/webhook', async (req, res) => {
       },
       { headers: HEADERS }
     );
-    const clientId = clientResp.data.client.id;
+
+    const data = clientResp.data;
+    // Handle possible response shapes: {client: {...}} or {clients: [{...}]}
+    const clientObj = data.client ?? (Array.isArray(data.clients) ? data.clients[0] : null);
+    if (!clientObj || !clientObj.id) {
+      console.error('Unexpected create client response:', JSON.stringify(data));
+      return res.status(500).send('Invalid client creation response');
+    }
+    const clientId = clientObj.id;
 
     // 2) Prepare invoice items
     const items = order.line_items.map(item => ({
@@ -40,7 +48,7 @@ app.post('/webhook', async (req, res) => {
     }));
 
     // 3) Create invoice
-    await axios.post(
+    const invoiceResp = await axios.post(
       `${BASE_URL}/invoices.json`,
       {
         invoice: {
@@ -52,11 +60,11 @@ app.post('/webhook', async (req, res) => {
       { headers: HEADERS }
     );
 
-    console.log(`✅ Invoice created for order #${order.id}`);
-    res.status(200).send('OK');
+    console.log(`✅ Invoice created for order #${order.id}`, invoiceResp.data);
+    res.sendStatus(200);
   } catch (e) {
     console.error('❌ Infakt API error:', e.response?.data || e.message);
-    res.status(500).send('Error creating invoice');
+    res.sendStatus(500);
   }
 });
 
