@@ -8,61 +8,33 @@ app.use(express.json());
 
 const BASE_URL = 'https://api.infakt.pl/api/v3';
 const CLIENTS_ENDPOINT = `${BASE_URL}/clients.json`;
-const INVOICES_ENDPOINT = `${BASE_URL}/async/invoices.json`;
+// Zmieniono na synchroniczny endpoint:
+const INVOICES_ENDPOINT = `${BASE_URL}/invoices.json`;
+
 const HEADERS = {
   'Content-Type': 'application/json',
-  'X-InFakt-ApiKey': process.env.INFAKT_API_KEY
+  'X-InFakt-ApiKey': process.env.INFAKT_API_KEY,
 };
 
-app.post('/webhook', async (req, res) => {
-  const order = req.body;
-
+app.post('/create-invoice', async (req, res) => {
   try {
-    // 1) Create client
-    const clientResp = await axios.post(
-      CLIENTS_ENDPOINT,
-      {
-        client: {
-          first_name: order.customer.first_name,
-          last_name:  order.customer.last_name,
-          email:      order.customer.email,
-          business_activity_kind: 'private_person'
-        }
-      },
-      { headers: HEADERS }
-    );
-
-    const data = clientResp.data;
-    const clientId = data.id || data.client?.id || (Array.isArray(data.clients) && data.clients[0]?.id);
-
-    if (!clientId) {
-      console.error('Invalid client response', data);
-      return res.status(500).send('Invalid client creation response');
-    }
-
-    // 2) Prepare services with gross prices
-    const services = order.line_items.map(item => ({
-      name:       item.name,
-      quantity:   item.quantity,
-      gross_price: parseFloat(item.price),
-      tax_rate:   (item.tax_lines[0]?.rate || 0) * 100
-    }));
-
-    // 3) Create invoice asynchronously
-    const invoiceTask = await axios.post(
+    const { clientId, services } = req.body;
+    // Wysyłamy żądanie tworzenia faktury i od razu otrzymujemy obiekt faktury:
+    const invoiceResp = await axios.post(
       INVOICES_ENDPOINT,
       {
         invoice: {
-          client_id:   clientId,
-          issue_date:  new Date().toISOString().slice(0,10),
-          services
-        }
+          client_id: clientId,
+          issue_date: new Date().toISOString().slice(0, 10),
+          services,
+        },
       },
       { headers: HEADERS }
     );
 
-    console.log('✅ Invoice task created:', invoiceTask.data);
-    res.sendStatus(200);
+    console.log('✅ Faktura utworzona:', invoiceResp.data);
+    // Zwracamy pełne dane faktury do klienta:
+    res.status(200).json(invoiceResp.data);
   } catch (e) {
     console.error('❌ Infakt API error:', e.response?.data || e.message);
     res.sendStatus(500);
