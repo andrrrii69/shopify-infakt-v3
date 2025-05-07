@@ -13,7 +13,7 @@ app.use((req, res, next) => {
 });
 
 const BASE_URL = 'https://api.infakt.pl/api/v3';
-const CLIENTS_ENDPOINT = `${BASE_URL}/clients.json`;  // endpoint for clients
+const CLIENTS_ENDPOINT = `${BASE_URL}/clients.json`;
 const INVOICES_ENDPOINT = `${BASE_URL}/invoices.json`;
 const HEADERS = {
   'Content-Type': 'application/json',
@@ -25,7 +25,7 @@ app.post('/webhook', async (req, res) => {
   try {
     const { contact_email, billing_address, line_items } = req.body;
 
-    // 1. Always create a new client in Infakt
+    // 1. Create a new client in Infakt
     const fullName = billing_address
       ? `${billing_address.first_name || ''} ${billing_address.last_name || ''}`.trim()
       : contact_email;
@@ -47,8 +47,12 @@ app.post('/webhook', async (req, res) => {
       newClientPayload,
       { headers: HEADERS }
     );
-    const clientId = clientResp.data.client.id;
-    console.log('👤 Klient utworzony:', clientResp.data.client);
+    console.log('👤 Client creation response:', clientResp.data);
+    const clientId = clientResp.data.client?.id;
+    if (!clientId) {
+      console.error('❌ Brak client.id w odpowiedzi Infakt:', clientResp.data);
+      return res.status(500).json({ error: 'Nie udało się utworzyć klienta' });
+    }
 
     // 2. Map Shopify line items to Infakt services
     const services = line_items.map(item => ({
