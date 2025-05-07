@@ -35,21 +35,18 @@ app.post('/webhook', async (req, res) => {
 
     // Handle various response shapes from Infakt API
     if (typeof data.id === 'number') {
-      // direct object with id at root
       clientId = data.id;
     } else if (data.client && typeof data.client.id === 'number') {
-      // { client: { id: ... } }
       clientId = data.client.id;
     } else if (Array.isArray(data.clients) && data.clients[0]?.id) {
-      // { clients: [ { id: ... } ] }
       clientId = data.clients[0].id;
     } else {
       console.error('Unexpected create client response:', JSON.stringify(data));
       return res.status(500).send('Invalid client creation response');
     }
 
-    // 2) Prepare invoice items
-    const items = order.line_items.map(item => ({
+    // 2) Prepare invoice services (items)
+    const services = order.line_items.map(item => ({
       name:        item.name,
       quantity:    item.quantity,
       unit_price:  item.price,
@@ -63,7 +60,7 @@ app.post('/webhook', async (req, res) => {
         invoice: {
           client_id:   clientId,
           issue_date:  new Date().toISOString().slice(0,10),
-          items
+          services:    services
         }
       },
       { headers: HEADERS }
