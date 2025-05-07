@@ -4,11 +4,18 @@ const axios = require('axios');
 require('dotenv').config();
 
 const app = express();
+// Parsowanie JSON
 app.use(express.json());
+
+// Middleware logujący wszystkie żądania
+app.use((req, res, next) => {
+  console.log(`🔍 Incoming request: ${req.method} ${req.url}`, req.body || {});
+  next();
+});
 
 const BASE_URL = 'https://api.infakt.pl/api/v3';
 const CLIENTS_ENDPOINT = `${BASE_URL}/clients.json`;
-// Zmieniono na synchroniczny endpoint:
+// Synchroniczny endpoint faktur
 const INVOICES_ENDPOINT = `${BASE_URL}/invoices.json`;
 
 const HEADERS = {
@@ -16,10 +23,12 @@ const HEADERS = {
   'X-InFakt-ApiKey': process.env.INFAKT_API_KEY,
 };
 
+// Punkt końcowy dla webhooka / fakturowania
 app.post('/create-invoice', async (req, res) => {
+  console.log('🔔 Webhook payload:', req.body);
   try {
     const { clientId, services } = req.body;
-    // Wysyłamy żądanie tworzenia faktury i od razu otrzymujemy obiekt faktury:
+    // Tworzymy fakturę synchronously i otrzymujemy od razu obiekt
     const invoiceResp = await axios.post(
       INVOICES_ENDPOINT,
       {
@@ -33,13 +42,13 @@ app.post('/create-invoice', async (req, res) => {
     );
 
     console.log('✅ Faktura utworzona:', invoiceResp.data);
-    // Zwracamy pełne dane faktury do klienta:
     res.status(200).json(invoiceResp.data);
   } catch (e) {
-    console.error('❌ Infakt API error:', e.response?.data || e.message);
+    console.error('❌ Błąd Infakt API:', e.response?.data || e.message);
     res.sendStatus(500);
   }
 });
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`🚀 Server listening on port ${PORT}`));
+
